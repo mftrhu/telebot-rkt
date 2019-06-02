@@ -1,0 +1,8 @@
+# Keep the token out of git
+token
+admins
+# Also keep the org-export files out of it
+*.tex
+*.pdf
+*.html
+_minted*
