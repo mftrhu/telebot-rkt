@@ -27,41 +27,6 @@
       (heap-min heap)
       #f))
 
-;; api-call -- bot: tg-bot, endpoint: string, payload: optional jsexpr --> jsexpr
-;; Makes an API call to the Telegram servers with the given `payload'.
-(define (-api-call bot endpoint (payload '()))
-  (define-values (status headers in)
-    (http-sendrecv "api.telegram.org"
-                   (string-append "/bot" (tg-bot-token bot) "/" endpoint)
-                   #:ssl? #t #:version "1.1" #:method "POST"
-                   #:headers '("Content-Type: application/json")
-                   #:data (jsexpr->string payload)
-                 ))
-  (let [(response (read-json in))]
-    (close-input-port in)
-    response))
-
-(define (--api-call bot endpoint (payload '()))
-  (define cust (make-custodian))
-    ;; Watcher thread:
-  (thread (lambda ()
-            (sleep 20)
-            (displayln "Request timed out")
-            (custodian-shutdown-all cust)))
-  (parameterize ([current-custodian cust])
-    (touch (future (lambda ()
-              (define-values (status headers in)
-                (http-sendrecv "api.telegram.org"
-                               (string-append "/bot" (tg-bot-token bot) "/" endpoint)
-                               #:ssl? #t #:version "1.1" #:method "POST"
-                               #:headers '("Content-Type: application/json")
-                               #:data (jsexpr->string payload)
-                               ))
-              (let [(response (read-json in))]
-                (close-input-port in)
-                response)))))
-  )
-
 (define error-value
   (case-lambda
     [(what) `(error ,what)]
