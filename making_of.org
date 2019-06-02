@@ -1,0 +1,223 @@
+#+Title: A Telegram bot in Racket
+#+Author: mftrhu
+#+Date: 2019-06-02
+
+* Why?
+I am bad at taking pauses, and I wanted a bot that could, amongst other things, ping me with a reminder each hour or so.
+
+I initially wrote it in Python, but rewriting it in Racket has been easy enough.
+
+* Starting out
+** Communicating with Telegram
+The Telegram bot API make it easy to build a bot for their platform, as everything they require is a way to make POST requests and to generate/parse JSON data.
+
+Racket has ~json~ in its standard library, so we just need to find a way to make POST requests: for that, we'll use ~net/http-client~.
+
+#+begin_src scheme
+(require net/http-client json)
+#+end_src
+
+~http-sendrecv~ seems to fit the bill: it allows us to make any sort of HTTP request, and it returns three values: the ~status~ of the response, its ~headers~, and an *input port* to the contents of the response itself.
+
+We use ~define-values~ to capture them and, blatantly ignoring the status of the response, we throw the ~in~ port at ~read-json~, close it, and return the resulting ~jsexpr~.
+
+#+begin_src scheme
+(define (api-call token endpoint (payload '()))
+  (define-values (status headers in)
+    (http-sendrecv *api-domain*
+                   (string-append "/bot" token "/" endpoint)
+                   #:ssl? #t #:version "1.1" #:method "POST"
+                   #:headers '("Content-Type: application/json")
+                   #:data (jsexpr->string payload)
+                 ))
+  (let [(response (read-json in))]
+    (close-input-port in)
+    response))
+#+end_src
+
+We also need to define a constant for the API domain.
+
+#+begin_src scheme
+(define *api-domain* "api.telegram.org")
+#+end_src
+
+This is just about enough to get us started on making our bot.  Calling ~api-call~ for everything, though, would become a hassle pretty quickly - but that's what functions are for.
+
+#+begin_src scheme
+(define (get-me token)
+  (api-call token "getMe"))
+#+end_src
+
+Hello, Telegram!
+
+#+begin_src scheme
+(let ([bot "1337...:...DEADBEEF"])
+  (get-me bot))
+#+end_src
+
+** Getting updates
+There are two main ways to actually get updates from the Telegram server: we can either set up a webhook and have them delivered there, or periodically poll their servers with ~getUpdates~ to see if there's anything new in the pipeline.
+
+We will do the latter.  Writing a ~get-updates~ method is not that much more difficult than ~get-me~ - it has a few parameters we can pass to it, but they are all optional, so let's ignore them for now:
+
+#+begin_src scheme
+(define (get-updates token)
+  (api-call bot "getUpdates"))
+#+end_src
+
+And here we have our first problem.  ~get-updates~ works all too well: it returns all the messages our bot has received so far, every time it is called.  Looking at [[https://core.telegram.org/bots/api#getupdates][the documentation for getUpdates]], we can see that, while ~offset~ is optional on paper, we actually need to keep track of it if we want our bot to be at all useful:
+
+#+begin_quote
+Identifier of the first update to be returned. Must be greater by one than the highest among the identifiers of previously received updates. *By default, updates starting with the earliest unconfirmed update are returned. An update is considered confirmed as soon as getUpdates is called with an offset higher than its update_id.* The negative offset can be specified to retrieve updates starting from -offset update from the end of the updates queue. All previous updates will forgotten.
+#+end_quote
+
+Our code needs to keep track of ~update_id~.  We could define a variable for that, but that seems inelegant - why not create a simple ~tg-bot~ structure and put everything inside it?
+
+#+begin_src scheme
+(struct tg-bot (token offset))
+#+end_src
+
+We would need to modify ~api-call~ slightly, but not much more, as everything else just blindly passes arguments to it.  Instead of receiving a ~token~, ~api-call~ now gets a ~tg-bot~ as its first argument, containing both ~token~ and ~offset~.  To access the former, we just need to replace ~token~ with ~(tg-bot-token bot)~.
+
+#+begin_src scheme
+(define (api-call bot endpoint (payload '()))
+  (define-values (status headers in)
+    (http-sendrecv *api-domain*
+                   (string-append "/bot" (tg-bot-token bot) "/" endpoint)
+[...]
+#+end_src
+
+We will also need to make ~get-updates~ smarter, sending the ~offset~ containing inside ~tg-bot~ to the Telegram servers.  ~api-call~ needs a ~jsexpr~ to be passed to it as its ~payload~, but there is not much to it - any combination of ~hash?~ and ~list?~ objects will do.
+
+In this case, we just need to pass it the equivalent of ~{"offset": N}~.
+
+#+begin_src scheme
+(define (get-updates bot)
+  (api-call bot "getUpdates"
+            (hasheq 'offset (tg-bot-offset bot))))
+#+end_src
+
+Now we can actually get only the new updates - we just have to remember to update the offset with each one.
+
+To do this, though, we need to either replace each instance of ~bot~ with a new one (~struct~ are by default immutable), or tell Racket to make the offset mutable.  That's easy enough:
+
+#+begin_src scheme
+(struct tg-bot (token [offset #:mutable])
+#+end_src
+
+#+begin_src scheme
+(let loop ([bot (tg-bot "1337...:...DEADBEEF" 0)])
+  (for ([update (hash-ref (get-updates bot) 'result)])
+       (set-tg-bot-offset! bot (+ (hash-ref update 'update_id) 1))
+       (handle-update bot update))
+  (loop bot))
+#+end_src
+
+** Replying to updates
+We have almost everything we need to build a simple echo bot: we just need to define ~handle-update~, and another function to send messages to some user.
+
+For the latter, we'll take the usual ~bot~ parameter, ~who~ - which can be either an user ID or a nickname - and ~payload~, containing the payload of the message to be sent.  We'll just update ~payload~ in place with ~chat_id~, and then make the call.
+
+#+begin_src scheme
+(define (send-message bot who payload)
+  (let ([payload (hash-set payload 'chat_id who)])
+    (api-call bot "sendMessage" payload))
+#+end_src
+
+#+begin_src scheme
+(define (handle-update bot update)
+  (send-message bot
+                (hash-ref (hash-ref update 'chat) 'id)
+                (hash-ref update 'text)))
+#+end_src
+
+* First milestone: a working echo bot
+#+name: echo_bot
+#+begin_src scheme
+(require net/http-client json)
+
+(define *api-domain* "api.telegram.org")
+
+(struct tg-bot (token [offset #:mutable])
+
+(define (api-call bot endpoint (payload '()))
+  (define-values (status headers in)
+    (http-sendrecv *api-domain*
+                   (string-append "/bot" (tg-bot-token bot) "/" endpoint)
+                   #:ssl? #t #:version "1.1" #:method "POST"
+                   #:headers '("Content-Type: application/json")
+                   #:data (jsexpr->string payload)
+                 ))
+  (let [(response (read-json in))]
+    (close-input-port in)
+    response))
+
+(define (get-me bot)
+  (api-call bot "getMe"))
+
+(define (get-updates bot)
+  (api-call bot "getUpdates"
+            (hasheq 'offset (tg-bot-offset bot))))
+
+(define (send-message bot who payload)
+  (let ([payload (hash-set payload 'chat_id who)])
+    (api-call bot "sendMessage" payload))
+
+(define (handle-update bot update)
+  (send-message bot
+                (hash-ref (hash-ref update 'chat) 'id)
+                (hash-ref update 'text)))
+
+(let loop ([bot (tg-bot "1337...:...DEADBEEF" 0)])
+  (for ([update (hash-ref (get-updates bot) 'result)])
+       (set-tg-bot-offset! bot (+ (hash-ref update 'update_id) 1))
+       (handle-update bot update))
+  (loop bot))
+#+end_src
+
+* More than an echo bot
+** Making the bot more robust
+As it stands, the bot will work, but it will flat-out crash when receiving a non-text message, and it will hang forever and stop receiving updates if the network connection will ever stop working.
+
+We can fix the former easily enough, but the latter is a wee bit more involved - Racket doesn't have a straightforward way to make HTTP requests with a timeout.
+
+#+begin_src scheme
+(define (is-text? message)
+  (hash-has-key? message 'text))
+
+(define (handle-update bot update)
+  (when (is-text? update)
+    (send-message bot
+                  (hash-ref (hash-ref update 'chat) 'id)
+                  (hash-ref update 'text))))
+#+end_src
+
+Searching DuckDuckGo and StartPage for how to implement a timeout on an HTTP request is less than helpful - "use threads, use custodians" - but luckily the Racket code base [[https://github.com/racket/racket/blob/master/racket/collects/version/check.rkt#L22][already contains a function that can be used for this]].
+
+#+begin_src scheme
+(define error-value
+  (case-lambda
+    [(what) `(error ,what)]
+    [(what more)
+     `(error ,what ,(cond [(list? more) (format "~a" more)]
+                          [(exn? more)  (format "(~a)" (exn-message more))]
+                          [else (format "(~a)" more)]))]))
+
+(define (with-timeout timeout thunk)
+  (define result #f)
+  (define r
+    (sync/timeout
+     timeout
+     (thread (λ ()
+               (set! result
+                     (with-handlers
+                         ([void (λ (e)
+                                  (error-value "internal error" e))])
+                       (thunk)))))))
+  (if r result (error-value "timeout")))
+#+end_src
+
+Now, we can just wrap ~api-call~ in ~with-timeout~, and have it return an error value instead of the expected JSON when offline.
+
+** TODO Adding bot admins
+** TODO Doing more than just reacting
