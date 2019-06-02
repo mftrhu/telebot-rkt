@@ -164,7 +164,6 @@
 ;; housekeep -- bot: tg-bot
 ;; Does any "housekeeping" tasks needed once every "tick".
 (define (housekeep bot)
-  ;(displayln (format "Housekeeping - last tick ~s" last-tick))
   (let ([now (current-seconds)]
         [next-event (heap-peek (tg-bot-queue bot))])
     (when (and next-event (>= now (car next-event)))
@@ -187,22 +186,9 @@
   (let loop ()
     ;; Go through the task queue
     (housekeep bot)
-    ;; Get the new updates, if any
+    ;; Get new updates, if any
     (displayln "Getting updates")
     (for ([update (get-updates bot)])
          (set-tg-bot-offset! bot (+ (hash-ref update 'update_id) 1))
          (handle-message bot (hash-ref update 'message)))
-    ;(let* ([updates (get-updates bot)]
-    ;       [updates (if (hash? updates)
-    ;                    updates
-    ;                    (begin
-    ;                      (sleep 10)
-    ;                      #hasheq((result . ()))))]
-    ;       [updates (hash-ref updates 'result)])
-    ;  (when (not (empty? updates))
-    ;    ;; Updates available - iterate over them and handle them
-    ;    (for ([update updates])
-    ;         (set-tg-bot-offset! bot (+ (hash-ref update 'update_id) 1))
-    ;         (handle-message bot (hash-ref update 'message))))
-      ;; Stay in the loop
     (loop)))
