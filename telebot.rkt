@@ -82,7 +82,7 @@
                     'timeout 10
                     'allowed_updates '("message"))))
 
-;; clean-updates -- bot: tg-bot
+;; clean-updates -- bot: tg-bot --> void (jsexpr)
 ;; "Flushes" out the update queue for `bot' - avoids things like the bot
 ;; getting in a shutdown loop.
 (define (clean-updates bot)
@@ -92,13 +92,13 @@
                     'timeout 0
                     'allowed_updates '("message"))))
 
-;; make-message -- payload: text or hasheq
+;; make-message -- payload: text or jsexpr --> jsexpr
 (define (make-message payload)
   (if (string? payload)
       (hasheq 'text payload)
       payload))
 
-;; send-message -- bot: tg-bot, who: number, payload: string or hasheq
+;; send-message -- bot: tg-bot, who: number, payload: string or jsexpr
 ;; If `payload' is a string, builds an hasheq from it.  It then updates it
 ;; with `who' (the ID of the chat to send the message to), and does an API
 ;; call to send the result.
@@ -107,7 +107,7 @@
          [payload (hash-set payload 'chat_id who)])
     (api-call bot "sendMessage" payload)))
 
-;; reply-to -- bot: tg-bot, message: hasheq, payload: any
+;; reply-to -- bot: tg-bot, message: jsexpr, payload: any
 ;; Dispatches `send-message' to send `payload' in reply to the user who
 ;; sent the message `message'.
 (define (reply-to bot message payload)
@@ -117,20 +117,21 @@
          [payload (hash-set payload 'reply_to_message_id msg_id)])
     (send-message bot who payload)))
 
-;; send-to-admin -- bot: tg-bot, payload: string or hasheq
+;; send-to-admin -- bot: tg-bot, payload: string or jsexpr
 (define (send-to-admin bot payload)
   (send-message bot (first (tg-bot-admin bot)) payload))
 
-;; by-admin? -- bot: tg-bot, message: hasheq
+;; by-admin? -- bot: tg-bot, message: jsexpr
 ;; Returns #t if `message' has been sent by one of the admins of `bot'.
 (define (by-admin? bot message)
   (let ([from (hash-ref (hash-ref message 'chat) 'id)])
     (member from (tg-bot-admin bot))))
 
+;; is-text? -- message: jsexpr --> boolean
 (define (is-text? message)
   (hash-has-key? message 'text))
 
-;; handle-message -- bot: tg-bot, loop: label, message: hasheq
+;; handle-message -- bot: tg-bot, loop: label, message: jsexpr
 ;; Does whatever it needs to do to handle the given `message'.
 (define (handle-message bot message)
   ;; We'll just silently ignore messages by anyone but the admin(s)
