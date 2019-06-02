@@ -152,6 +152,9 @@
         (raise "Bot shut down by admin.")]
        [(regexp-match "^/info$" text)
         (reply-to bot message (jsexpr->string (get-me bot)))]
+       [(regexp-match "^/queue$" text)
+        (enqueue bot (+ (current-seconds) 60)
+                 (lambda () (send-to-admin bot "TICK")))]
        [else
         (reply-to bot message (string-append "Message received: " text))]))))
 
@@ -169,7 +172,9 @@
     (when (and next-event (>= now (car next-event)))
       ;; Remove the event from the heap and execute it
       (heap-remove-min! (tg-bot-queue bot))
-      ((cdr next-event)))))
+      ;; Execute the thunk by passing the thunk itself as a parameter
+      ;; Allows things like a thunk re-enqueueing itself
+      ((cdr next-event) (cdr next-event)))))
 
 ;; Find the directory the bot is running from
 ;; We need this - for now - because the token and the list of admins are
@@ -180,8 +185,12 @@
 ;; Initialize the bot
 (let* ([bot (mk-tg-bot (string-trim (file->string (build-path dir "token")))
                        (file->list (build-path dir "admins")))])
-  (enqueue bot 0 (lambda () (send-to-admin bot "NFO :: Bot started")))
-  (enqueue bot (+ (current-seconds) 10) (λ () (send-to-admin bot "NFO :: 10+ seconds have passed")))
+  ;(enqueue bot 0 (lambda () (send-to-admin bot "NFO :: Bot started")))
+  ;;(enqueue bot (+ (current-seconds) 10) (λ () (send-to-admin bot "NFO :: 10+ seconds have passed")))
+  (enqueue bot (+ (current-seconds) 10)
+           (λ (thunk)
+             (send-to-admin bot "NFO :: 10+ seconds have passed")
+             (enqueue bot (+ (current-seconds) 10) thunk)))
   ;; Start the loop
   (let loop ()
     ;; Go through the task queue
