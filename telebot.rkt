@@ -71,16 +71,24 @@
 (define (get-me bot)
   (api-call bot "getMe"))
 
-;; get-updates -- bot: tg-bot --> jsexpr
+;; raw-get-updates -- bot: tg-bot --> jsexpr
 ;; Returns an hasheq containing up to 100 of the last updates from Telegram.
 ;; N.B.: in #hasheq(), '("a" "b") or (list "a" "b") != jsexpr, just use ("a" "b")
-(define (get-updates bot)
-  ;;(displayln "Polling for updates...")
+(define (raw-get-updates bot)
   (api-call bot "getUpdates"
             (hasheq 'offset (tg-bot-offset bot)
                     'limit 100
                     'timeout 10
                     'allowed_updates '("message"))))
+
+;; get-updates -- bot: tg-bot --> list
+(define (get-updates bot)
+  (let ([updates (raw-get-updates bot)])
+    (if (hash? updates)
+        (hash-ref updates 'result)
+        (begin
+          (sleep 10)
+          '()))))
 
 ;; clean-updates -- bot: tg-bot --> void (jsexpr)
 ;; "Flushes" out the update queue for `bot' - avoids things like the bot
@@ -156,7 +164,7 @@
 ;; housekeep -- bot: tg-bot
 ;; Does any "housekeeping" tasks needed once every "tick".
 (define (housekeep bot)
-  (displayln (format "Housekeeping - last tick ~s" last-tick))
+  ;(displayln (format "Housekeeping - last tick ~s" last-tick))
   (let ([now (current-seconds)]
         [next-event (heap-peek (tg-bot-queue bot))])
     (when (and next-event (>= now (car next-event)))
@@ -181,17 +189,20 @@
     (housekeep bot)
     ;; Get the new updates, if any
     (displayln "Getting updates")
-    (let* ([updates (get-updates bot)]
-           [updates (if (hash? updates)
-                        updates
-                        (begin
-                          (sleep 10)
-                          #hasheq((result . ()))))]
-           [updates (hash-ref updates 'result)])
-      (when (not (empty? updates))
-        ;; Updates available - iterate over them and handle them
-        (for ([update updates])
-             (set-tg-bot-offset! bot (+ (hash-ref update 'update_id) 1))
-             (handle-message bot (hash-ref update 'message))))
+    (for ([update (get-updates bot)])
+         (set-tg-bot-offset! bot (+ (hash-ref update 'update_id) 1))
+         (handle-message bot (hash-ref update 'message)))
+    ;(let* ([updates (get-updates bot)]
+    ;       [updates (if (hash? updates)
+    ;                    updates
+    ;                    (begin
+    ;                      (sleep 10)
+    ;                      #hasheq((result . ()))))]
+    ;       [updates (hash-ref updates 'result)])
+    ;  (when (not (empty? updates))
+    ;    ;; Updates available - iterate over them and handle them
+    ;    (for ([update updates])
+    ;         (set-tg-bot-offset! bot (+ (hash-ref update 'update_id) 1))
+    ;         (handle-message bot (hash-ref update 'message))))
       ;; Stay in the loop
-      (loop))))
+    (loop)))
