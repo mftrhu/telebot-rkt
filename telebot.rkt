@@ -144,15 +144,18 @@
 (define (handle-message bot message)
   ;; We'll just silently ignore messages by anyone but the admin(s)
   (when (and (by-admin? bot message) (is-text? message))
-    (let ([text (hash-ref message 'text)])
+    (let* ([text (hash-ref message 'text)]
+           [match (regexp-match #px"^/(\\w+)( +(.+))?$" text)]
+           [command (second match)]
+           [params (fourth match)])
       (cond
-       [(regexp-match "^/shutdown$" text)
+       [(string=? "shutdown" command)
         (clean-updates bot)
         (reply-to bot message "ACK :: shutting down")
         (raise "Bot shut down by admin.")]
-       [(regexp-match "^/info$" text)
+       [(string=? "info" command)
         (reply-to bot message (jsexpr->string (get-me bot)))]
-       [(regexp-match "^/queue$" text)
+       [(string=? "queue" command)
         (enqueue bot (+ (current-seconds) 60)
                  (lambda () (send-to-admin bot "TICK")))]
        [else
