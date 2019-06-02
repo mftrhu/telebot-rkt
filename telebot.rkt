@@ -17,8 +17,8 @@
 ;; return its value.
 (define (heap-pop-min! heap)
   (begin0
-    (heap-min heap)
-    (heap-remove-min! heap)))
+   (heap-min heap)
+   (heap-remove-min! heap)))
 
 ;; heap-peek -- heap: heap --> boolean
 ;; Returns the topmost element of `heap', or #f if `heap' is empty.
@@ -29,11 +29,11 @@
 
 (define error-value
   (case-lambda
-    [(what) `(error ,what)]
-    [(what more)
-     `(error ,what ,(cond [(list? more) (format "~a" more)]
-                          [(exn? more)  (format "(~a)" (exn-message more))]
-                          [else (format "(~a)" more)]))]))
+   [(what) `(error ,what)]
+   [(what more)
+    `(error ,what ,(cond [(list? more) (format "~a" more)]
+                         [(exn? more)  (format "(~a)" (exn-message more))]
+                         [else (format "(~a)" more)]))]))
 
 ;; with-timeout -- timeout: number, thunk: thunk
 ;; Shamelessly stolen from <https://github.com/racket/racket/blob/master/racket/collects/version/check.rkt#L22>
@@ -47,25 +47,25 @@
      (thread (λ ()
                (set! result
                      (with-handlers
-                         ([void (λ (e)
-                                  (error-value "internal error" e))])
-                       (thunk)))))))
+                      ([void (λ (e)
+                               (error-value "internal error" e))])
+                      (thunk)))))))
   (if r result (error-value "timeout")))
 
 ;; api-call -- bot: tg-bot, endpoint: string, payload: optional jsexpr --> jsexpr
 ;; Makes an API call to the Telegram servers with the given `payload'.
 (define (api-call bot endpoint (payload '()))
-   (with-timeout 30 (lambda ()
-             (define-values (status headers in)
-               (http-sendrecv "api.telegram.org"
-                              (string-append "/bot" (tg-bot-token bot) "/" endpoint)
-                              #:ssl? #t #:version "1.1" #:method "POST"
-                              #:headers '("Content-Type: application/json")
-                              #:data (jsexpr->string payload)
-                              ))
-             (let [(response (read-json in))]
-               (close-input-port in)
-               response))))
+  (with-timeout 30 (lambda ()
+                     (define-values (status headers in)
+                       (http-sendrecv "api.telegram.org"
+                                      (string-append "/bot" (tg-bot-token bot) "/" endpoint)
+                                      #:ssl? #t #:version "1.1" #:method "POST"
+                                      #:headers '("Content-Type: application/json")
+                                      #:data (jsexpr->string payload)
+                                      ))
+                     (let [(response (read-json in))]
+                       (close-input-port in)
+                       response))))
 
 ;; get-me -- bot: tg-bot --> jsexpr
 (define (get-me bot)
@@ -146,14 +146,14 @@
   (when (and (by-admin? bot message) (is-text? message))
     (let ([text (hash-ref message 'text)])
       (cond
-        [(regexp-match "^/shutdown$" text)
-         (clean-updates bot)
-         (reply-to bot message "ACK :: shutting down")
-         (raise "Bot shut down by admin.")]
-        [(regexp-match "^/info$" text)
-         (reply-to bot message (jsexpr->string (get-me bot)))]
-        [else
-         (reply-to bot message (string-append "Message received: " text))]))))
+       [(regexp-match "^/shutdown$" text)
+        (clean-updates bot)
+        (reply-to bot message "ACK :: shutting down")
+        (raise "Bot shut down by admin.")]
+       [(regexp-match "^/info$" text)
+        (reply-to bot message (jsexpr->string (get-me bot)))]
+       [else
+        (reply-to bot message (string-append "Message received: " text))]))))
 
 ;; enqueue -- bot: tg-bot, when: integer, thunk: thunk
 ;; Puts `thunk' in `bot's task `queue', to be executed after `when' (which
