@@ -6,7 +6,8 @@
 (struct tg-bot (token [admin #:mutable]
                       [offset #:mutable]
                       [queue #:mutable]
-                      [commands #:mutable]))
+                      [commands #:mutable]
+                      [state #:mutable]))
 
 ;; mk-tg-bot -- token: string, admin: list --> tg-bot
 ;; Creates and returns a `tg-bot' initialized with `token' and `admin'.
@@ -15,6 +16,8 @@
           ;; queue should be a min-heap of (scheduled_time . thunk)
           (make-heap (lambda (a b) (<= (car a) (car b))))
           ;; commands should be an hash (**not** hasheq)
+          (make-hash)
+          ;; state should be another hash - this time for random variables
           (make-hash)))
 
 ;; heap-pop-min! -- heap: heap --> heap element
@@ -187,13 +190,22 @@
       ;; Allows things like a thunk re-enqueueing itself
       ((cdr next-event) (cdr next-event)))))
 
+(define (get-var bot var (default #f))
+  (if (hash-has-key? (tg-bot-state bot) var)
+      (hash-ref (tg-bot-state bot) var)
+      default))
+
+(define (set-var! bot var value)
+  (hash-set! (tg-bot-state bot) var value))
+
 ;; chime -- bot: tg-bot --> thunk
 ;; Pings the admin with a message and re-enqueues itself for the next hour
 (define (chime bot)
   (lambda (thunk)
     (let ([now (date->string (current-date) "~H:~M")]
           [next-hour (* (+ (quotient (current-seconds) 3600) 1) 3600)])
-      (send-to-admin bot (format "It's ~a." now))
+      (when (get-var bot "enabled")
+        (send-to-admin bot (format "It's ~a." now)))
       (displayln (format "DBG :: enqueueing for ~a" next-hour))
       (enqueue bot next-hour thunk))))
 
@@ -215,6 +227,14 @@
   (add-command bot "info"
                (lambda (bot params message)
                  (reply-to bot message (jsexpr->string (get-me bot)))))
+  (add-command bot "hello"
+               (lambda (bot params message)
+                 (reply-to bot message "ACK :: waking up")
+                 (set-var! bot "enabled" #t)))
+  (add-command bot "bye"
+               (lambda (bot params message)
+                 (reply-to bot message "ACK :: going to sleep")
+                 (set-var! bot "enabled" #f)))
   ;; Define the "scheduled" commands
   (let ([chime (chime bot)])
     (chime chime))
