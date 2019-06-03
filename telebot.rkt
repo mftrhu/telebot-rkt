@@ -204,7 +204,7 @@
   (lambda (thunk)
     (let ([now (date->string (current-date) "~H:~M")]
           [next-hour (* (+ (quotient (current-seconds) 3600) 1) 3600)])
-      (when (get-var bot "enabled")
+      (when (get-var bot 'enabled)
         (send-to-admin bot (format "It's ~a." now)))
       (displayln (format "DBG :: enqueueing for ~a" next-hour))
       (enqueue bot next-hour thunk))))
@@ -226,15 +226,19 @@
                  (raise "Bot shut down by admin.")))
   (add-command bot "info"
                (lambda (bot params message)
-                 (reply-to bot message (jsexpr->string (get-me bot)))))
+                 (cond
+                  [(string=? "state" params)
+                   (reply-to bot message (jsexpr->string (tg-bot-state bot)))]
+                  [else
+                   (reply-to bot message (jsexpr->string (get-me bot)))])))
   (add-command bot "hello"
                (lambda (bot params message)
                  (reply-to bot message "ACK :: waking up")
-                 (set-var! bot "enabled" #t)))
+                 (set-var! bot 'enabled #t)))
   (add-command bot "bye"
                (lambda (bot params message)
                  (reply-to bot message "ACK :: going to sleep")
-                 (set-var! bot "enabled" #f)))
+                 (set-var! bot 'enabled #f)))
   ;; Define the "scheduled" commands
   (let ([chime (chime bot)])
     (chime chime))
