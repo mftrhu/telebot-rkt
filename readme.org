@@ -1,0 +1,12 @@
+#+Title: telebot.rkt
+#+Author: mftrhu
+
+~telebot.rkt~ (proper name pending) is a simple Telegram bot built in Racket from scratch.  It is *not* - yet, at least - a Racket Telegram bot library, but it can be hacked on fairly easily.
+
+It has been developed using [[https://racket-lang.org/][Racket]] 7.3, but it will *probably* work on earlier versions: it requires the ~net/http-client~, ~json~, ~data/heap~ and ~srfi/19~ libraries.
+
+To start the bot, simply run
+
+: $ racket ./telebot.rkt
+
+It expects two plain-text files to exist in the same folder as ~telebot.rkt~: ~token~, containing the token for the bot (one can be obtained via [[https://t.me/BotFather][@BotFather]]), and ~admins~, containing a list of whitespace-separated IDs of the users which should have admin permissions on the bot.
