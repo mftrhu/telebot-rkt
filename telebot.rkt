@@ -160,7 +160,7 @@
       (if match
           ;; The message contains a command - pull out the relevant matches
           (let* ([command (second match)]
-                 [params (fourth match)]
+                 [params (or (fourth match) "")]
                  ;; Look `command' up in the bot `commands' hash, use
                  ;; `default-command' if nothing comes up.
                  [function (hash-ref (tg-bot-commands bot) command
