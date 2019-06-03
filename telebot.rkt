@@ -1,5 +1,5 @@
 #lang racket ; -*- mode: scheme; -*-
-(require net/http-client json data/heap)
+(require net/http-client json data/heap srfi/19)
 
 (define *api-domain* "api.telegram.org")
 
@@ -185,15 +185,25 @@
 (define-values (dir name is-dir)
   (split-path (find-system-path 'run-file)))
 
+(define (chime bot)
+  (lambda (thunk)
+    (let ([now (date->string (current-date) "~H:~M")]
+          [next-hour (* (+ (quotient (current-seconds) 3600) 1) 3600)])
+      (send-to-admin bot (format "It's ~a." now))
+      (displayln (format "DBG :: enqueueing for ~a" next-hour))
+      (enqueue bot next-hour thunk))))
+
 ;; Initialize the bot
 (let* ([bot (mk-tg-bot (string-trim (file->string (build-path dir "token")))
                        (file->list (build-path dir "admins")))])
   ;(enqueue bot 0 (lambda () (send-to-admin bot "NFO :: Bot started")))
   ;;(enqueue bot (+ (current-seconds) 10) (λ () (send-to-admin bot "NFO :: 10+ seconds have passed")))
-  (enqueue bot (+ (current-seconds) 10)
-           (λ (thunk)
-             (send-to-admin bot "NFO :: 10+ seconds have passed")
-             (enqueue bot (+ (current-seconds) 10) thunk)))
+  ;;(enqueue bot (+ (current-seconds) 10)
+  ;;         (λ (thunk)
+  ;;           (send-to-admin bot "NFO :: 10+ seconds have passed")
+  ;;           (enqueue bot (+ (current-seconds) 10) thunk)))
+  (let ([chime (chime bot)])
+    (chime chime))
   ;; Start the loop
   (let loop ()
     ;; Go through the task queue
