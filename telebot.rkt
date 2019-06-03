@@ -187,12 +187,8 @@
       ;; Allows things like a thunk re-enqueueing itself
       ((cdr next-event) (cdr next-event)))))
 
-;; Find the directory the bot is running from
-;; We need this - for now - because the token and the list of admins are
-;; stored in the files `token' and `admins' in that directory.
-(define-values (dir name is-dir)
-  (split-path (find-system-path 'run-file)))
-
+;; chime -- bot: tg-bot --> thunk
+;; Pings the admin with a message and re-enqueues itself for the next hour
 (define (chime bot)
   (lambda (thunk)
     (let ([now (date->string (current-date) "~H:~M")]
@@ -200,6 +196,12 @@
       (send-to-admin bot (format "It's ~a." now))
       (displayln (format "DBG :: enqueueing for ~a" next-hour))
       (enqueue bot next-hour thunk))))
+
+;; Find the directory the bot is running from
+;; We need this - for now - because the token and the list of admins are
+;; stored in the files `token' and `admins' in that directory.
+(define-values (dir name is-dir)
+  (split-path (find-system-path 'run-file)))
 
 ;; Initialize the bot
 (let* ([bot (mk-tg-bot (string-trim (file->string (build-path dir "token")))
