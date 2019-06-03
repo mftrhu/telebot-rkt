@@ -3,14 +3,19 @@
 
 (define *api-domain* "api.telegram.org")
 
-(struct tg-bot (token [admin #:mutable] [offset #:mutable] [queue #:mutable]))
+(struct tg-bot (token [admin #:mutable]
+                      [offset #:mutable]
+                      [queue #:mutable]
+                      [commands #:mutable]))
 
 ;; mk-tg-bot -- token: string, admin: list --> tg-bot
 ;; Creates and returns a `tg-bot' initialized with `token' and `admin'.
 (define (mk-tg-bot token admin )
   (tg-bot token admin 0
           ;; queue should be a min-heap of (scheduled_time . thunk)
-          (make-heap (lambda (a b) (<= (car a) (car b))))))
+          (make-heap (lambda (a b) (<= (car a) (car b))))
+          ;; commands should be an hash (**not** hasheq)
+          (make-hash)))
 
 ;; heap-pop-min! -- heap: heap --> heap element
 ;; Utility function to remove the minimum from the given `heap' **and**
@@ -139,6 +144,12 @@
 (define (is-text? message)
   (hash-has-key? message 'text))
 
+(define (add-command bot command function)
+  (hash-set! (tg-bot-commands bot) command function))
+
+(define (default-command bot params message)
+  (reply-to bot message "Command not understood."))
+
 ;; handle-message -- bot: tg-bot, loop: label, message: jsexpr
 ;; Does whatever it needs to do to handle the given `message'.
 (define (handle-message bot message)
@@ -147,19 +158,15 @@
     (let* ([text (hash-ref message 'text)]
            [match (regexp-match #px"^/(\\w+)( +(.+))?$" text)])
       (if match
-          (let ([command (second match)]
-                [params (fourth match)])
-            (cond
-             [(string=? "shutdown" command)
-              (clean-updates bot)
-              (reply-to bot message "ACK :: shutting down")
-              (raise "Bot shut down by admin.")]
-             [(string=? "info" command)
-              (reply-to bot message (jsexpr->string (get-me bot)))]
-             [(string=? "queue" command)
-              (enqueue bot (+ (current-seconds) 60)
-                       (lambda () (send-to-admin bot "TICK")))]
-             [else (reply-to  bot message "Command not understood")]))
+          ;; The message contains a command - pull out the relevant matches
+          (let* ([command (second match)]
+                 [params (fourth match)]
+                 ;; Look `command' up in the bot `commands' hash, use
+                 ;; `default-command' if nothing comes up.
+                 [function (hash-ref (tg-bot-commands bot) command
+                                     (lambda () default-command))])
+            (function bot params message))
+          ;; The message is just plain old text
           (reply-to bot message (string-append "Message received: " text))))))
 
 ;; enqueue -- bot: tg-bot, when: integer, thunk: thunk
@@ -197,12 +204,16 @@
 ;; Initialize the bot
 (let* ([bot (mk-tg-bot (string-trim (file->string (build-path dir "token")))
                        (file->list (build-path dir "admins")))])
-  ;(enqueue bot 0 (lambda () (send-to-admin bot "NFO :: Bot started")))
-  ;;(enqueue bot (+ (current-seconds) 10) (λ () (send-to-admin bot "NFO :: 10+ seconds have passed")))
-  ;;(enqueue bot (+ (current-seconds) 10)
-  ;;         (λ (thunk)
-  ;;           (send-to-admin bot "NFO :: 10+ seconds have passed")
-  ;;           (enqueue bot (+ (current-seconds) 10) thunk)))
+  ;; Define the bot commands
+  (add-command bot "shutdown"
+               (lambda (bot params message)
+                 (clean-updates bot)
+                 (reply-to bot message "ACK :: shutting down")
+                 (raise "Bot shut down by admin.")))
+  (add-command bot "info"
+               (lambda (bot params message)
+                 (reply-to bot message (jsexpr->string (get-me bot)))))
+  ;; Define the "scheduled" commands
   (let ([chime (chime bot)])
     (chime chime))
   ;; Start the loop
