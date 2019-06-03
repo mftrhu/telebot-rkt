@@ -145,21 +145,22 @@
   ;; We'll just silently ignore messages by anyone but the admin(s)
   (when (and (by-admin? bot message) (is-text? message))
     (let* ([text (hash-ref message 'text)]
-           [match (regexp-match #px"^/(\\w+)( +(.+))?$" text)]
-           [command (second match)]
-           [params (fourth match)])
-      (cond
-       [(string=? "shutdown" command)
-        (clean-updates bot)
-        (reply-to bot message "ACK :: shutting down")
-        (raise "Bot shut down by admin.")]
-       [(string=? "info" command)
-        (reply-to bot message (jsexpr->string (get-me bot)))]
-       [(string=? "queue" command)
-        (enqueue bot (+ (current-seconds) 60)
-                 (lambda () (send-to-admin bot "TICK")))]
-       [else
-        (reply-to bot message (string-append "Message received: " text))]))))
+           [match (regexp-match #px"^/(\\w+)( +(.+))?$" text)])
+      (if match
+          (let ([command (second match)]
+                [params (fourth match)])
+            (cond
+             [(string=? "shutdown" command)
+              (clean-updates bot)
+              (reply-to bot message "ACK :: shutting down")
+              (raise "Bot shut down by admin.")]
+             [(string=? "info" command)
+              (reply-to bot message (jsexpr->string (get-me bot)))]
+             [(string=? "queue" command)
+              (enqueue bot (+ (current-seconds) 60)
+                       (lambda () (send-to-admin bot "TICK")))]
+             [else (reply-to  bot message "Command not understood")]))
+          (reply-to bot message (string-append "Message received: " text))))))
 
 ;; enqueue -- bot: tg-bot, when: integer, thunk: thunk
 ;; Puts `thunk' in `bot's task `queue', to be executed after `when' (which
