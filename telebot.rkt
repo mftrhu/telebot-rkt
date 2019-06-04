@@ -1,5 +1,10 @@
 #lang racket ; -*- mode: scheme; -*-
-(require net/http-client json data/heap srfi/19)
+(require net/http-client
+         json
+         data/heap
+         racket/date
+         (only-in srfi/19 string->date lax-date?)
+         racket/struct)
 
 (define *api-domain* "api.telegram.org")
 
@@ -59,6 +64,63 @@
                                (error-value "internal error" e))])
                       (thunk)))))))
   (if r result (error-value "timeout")))
+
+;; first-rest -- string --> string, string
+;; Splits a string in first and rest, where first is all the characters up
+;; to the first whitespace character.
+(define (first-rest string)
+  (let ([match (regexp-match #px"(.+?) +(.+)" string)])
+    (when match
+      (values (second match) (third match)))))
+
+;; dateify -- when: date or lax-date --> date
+;; If passed a lax-date, turns it into a date.
+(define (dateify when)
+  (if (lax-date? when)
+      (let* ([now (seconds->date (current-seconds))]
+             [unpacked (struct->list when)]
+             [hours (fourth unpacked)]
+             [minutes (third unpacked)])
+        (struct-copy date now
+                     [hour hours]
+                     [minute minutes]
+                     [second 0]))
+      when))
+
+;; try-string->timestamp -- string: string, datefmt: string --> integer
+(define (try-string->timestamp string datefmt)
+  (with-handlers ([exn:fail? (lambda (ex) #f)])
+    (date->seconds (dateify (string->date string datefmt)))))
+
+;; try-string->number -- string: any --> integer
+;; Tries to parse string as a number, or returns 0.
+(define (try-string->number string)
+  (with-handlers ([exn:fail? (lambda (ex) 0)])
+    (or (string->number string) 0)))
+
+;; timedelta-->timestamp -- string: string --> integer
+;; Returns the timestamp from now to the given time offset, specified in
+;; the [DDd][HHh][MMm] format.  An empty offset will simply result in now
+;; being returned.
+(define (timedelta->timestamp string)
+  (with-handlers ([exn:fail? (lambda (ex) #f)])
+    (let* ([match (regexp-match #px"^(?:(\\d+)d)?(?:(\\d+)h)?(?:(\\d+)m)?$" string)]
+           [days (try-string->number (second match))]
+           [hours (try-string->number (third match))]
+           [minutes (try-string->number (fourth match))])
+      (+ (current-seconds)
+         (* days 86400)
+         (* hours 3600)
+         (* minutes 60)))))
+
+;; parse-time-string -- when: string
+;; Tries to parse a time string with various strategies
+(define (parse-time-string when)
+  (cond
+    [(try-string->timestamp when "~Y-~m-~d")]
+    [(try-string->timestamp when "~H:~M")]
+    [(timedelta->timestamp when)]
+    [else #f]))
 
 ;; api-call -- bot: tg-bot, endpoint: string, payload: optional jsexpr --> jsexpr
 ;; Makes an API call to the Telegram servers with the given `payload'.
@@ -239,6 +301,15 @@
                (lambda (bot params message)
                  (reply-to bot message "ACK :: going to sleep")
                  (set-var! bot 'enabled #f)))
+  (add-command bot "ping"
+               (lambda (bot params message)
+                 (define-values (time text)
+                   (first-rest params))
+                 (if (parse-time-string time)
+                     (enqueue bot (parse-time-string time)
+                              (lambda (thunk)
+                                (send-to-admin bot text)))
+                     (reply-to bot message (format "Bad time string: ~a" time)))))
   ;; Define the "scheduled" commands
   (let ([chime (chime bot)])
     (chime chime))
