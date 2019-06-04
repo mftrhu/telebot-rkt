@@ -2,8 +2,8 @@
 (require net/http-client
          json
          data/heap
-         racket/date
-         (only-in srfi/19 string->date lax-date?)
+         (except-in racket/date date->string)
+         (only-in srfi/19 string->date date->string lax-date?)
          racket/struct)
 
 (define *api-domain* "api.telegram.org")
@@ -280,6 +280,7 @@
 ;; Initialize the bot
 (let* ([bot (mk-tg-bot (string-trim (file->string (build-path dir "token")))
                        (file->list (build-path dir "admins")))])
+  (set-var! bot 'enabled #t)
   ;; Define the bot commands
   (add-command bot "shutdown"
                (lambda (bot params message)
