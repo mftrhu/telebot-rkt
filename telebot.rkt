@@ -154,7 +154,7 @@
 ;; get-updates -- bot: tg-bot --> list
 (define (get-updates bot)
   (let ([updates (raw-get-updates bot)])
-    (if (hash? updates)
+    (if (and (hash? updates) (hash-has-key? updates 'result))
         (hash-ref updates 'result)
         (begin
           (sleep 10)
